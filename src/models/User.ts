@@ -20,7 +20,7 @@ export type UserModel = mongoose.Document & {
   },
 
   comparePassword: (candidatePassword: string, cb: (err: any, isMatch: any) => {}) => void,
-  gravatar: (size: number) => string
+  gravatar: (size?: number) => string
 };
 
 export type AuthToken = {
@@ -29,7 +29,7 @@ export type AuthToken = {
 };
 
 const userSchema = new mongoose.Schema({
-  email: { type: String, unique: true },
+  email: {type: String, unique: true},
   password: String,
   passwordResetToken: String,
   passwordResetExpires: Date,
@@ -74,15 +74,19 @@ userSchema.methods.comparePassword = function (candidatePassword: string, cb: (e
 /**
  * Helper method for getting user's gravatar.
  */
-userSchema.methods.gravatar = function (size: number) {
+userSchema.methods.gravatar = function (size?: number) {
   if (!size) {
     size = 200;
   }
-  if (!this.email) {
-    return `https://gravatar.com/avatar/?s=${size}&d=retro`;
+  if (this.profile.picture) {
+    return this.profile.picture;
+  } else {
+    if (!this.email) {
+      return `https://gravatar.com/avatar/?s=${size}&d=retro`;
+    }
+    const md5 = crypto.createHash("md5").update(this.email).digest("hex");
+    return `https://gravatar.com/avatar/${md5}?s=${size}&d=retro`;
   }
-  const md5 = crypto.createHash("md5").update(this.email).digest("hex");
-  return `https://gravatar.com/avatar/${md5}?s=${size}&d=retro`;
 };
 
 // export const User: UserType = mongoose.model<UserType>('User', userSchema);

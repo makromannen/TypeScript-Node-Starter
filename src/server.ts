@@ -14,16 +14,19 @@ import * as flash from "express-flash";
 import * as path from "path";
 import * as mongoose from "mongoose";
 import * as passport from "passport";
+
+import * as hbs from "hbs";
+import * as fs from "fs";
+import hbsutils = require("hbs-utils");
+import { UserModel } from "./models/user";
+
 import expressValidator = require("express-validator");
 
 
 const MongoStore = mongo(session);
 
-/**
- * Load environment variables from .env file, where API keys and passwords are configured.
- */
-dotenv.config({ path: ".env.example" });
-
+const env = process.env.NODE_ENV || "development";
+dotenv.config({path: `.env.${env}`});
 
 /**
  * Controllers (route handlers).
@@ -47,25 +50,78 @@ const app = express();
  * Connect to MongoDB.
  */
 // mongoose.Promise = global.Promise;
+console.log(process.env.MONGODB_URI);
+(<any>mongoose).Promise = global.Promise;
+
 mongoose.connect(process.env.MONGODB_URI || process.env.MONGOLAB_URI);
 
 mongoose.connection.on("error", () => {
   console.log("MongoDB connection error. Please make sure MongoDB is running.");
   process.exit();
 });
-
-
+mongoose.set("debug", true);
 
 /**
  * Express configuration.
  */
 app.set("port", process.env.PORT || 3000);
 app.set("views", path.join(__dirname, "../views"));
-app.set("view engine", "pug");
+app.set("view engine", "hbs");
+
+const partialsDir = __dirname + "/../views/partials";
+
+hbs.registerHelper("setChecked", function (value: string, currentValue: string) {
+  if (value == currentValue) {
+    return "checked";
+  } else {
+    return "";
+  }
+});
+hbs.registerHelper("gravatar", (user: UserModel) => {
+  return user.gravatar();
+});
+hbs.registerHelper("stringify", (what: object) => {
+  return JSON.stringify(what);
+});
+hbs.registerHelper("username", (user: UserModel) => {
+  return user.profile.name || user.email || user.id;
+});
+hbs.registerHelper("grouped_each", (every: any, context: any, options: any) => {
+  let out = "", subcontext = [], i;
+  if (context && context.length > 0) {
+    for (i = 0; i < context.length; i++) {
+      if (i > 0 && i % every === 0) {
+        out += options.fn(subcontext);
+        subcontext = [];
+      }
+      subcontext.push(context[i]);
+    }
+    out += options.fn(subcontext);
+  }
+  return out;
+});
+
+if ("development" == env) {
+  console.log("DEV MODE");
+  const hbsu = hbsutils(hbs);
+  hbsu.registerWatchedPartials(partialsDir);
+} else {
+  const filenames = fs.readdirSync(partialsDir);
+  filenames.forEach(function (filename) {
+    const matches = /^([^.]+).hbs$/.exec(filename);
+    if (!matches) {
+      return;
+    }
+    const name = matches[1];
+    const template = fs.readFileSync(partialsDir + "/" + filename, "utf8");
+    hbs.registerPartial(name, template);
+  });
+}
+
 app.use(compression());
 app.use(logger("dev"));
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({extended: true}));
 app.use(expressValidator());
 app.use(session({
   resave: true,
@@ -88,18 +144,18 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   // After successful login, redirect back to the intended page
   if (!req.user &&
-      req.path !== "/login" &&
-      req.path !== "/signup" &&
-      !req.path.match(/^\/auth/) &&
-      !req.path.match(/\./)) {
+    req.path !== "/login" &&
+    req.path !== "/signup" &&
+    !req.path.match(/^\/auth/) &&
+    !req.path.match(/\./)) {
     req.session.returnTo = req.path;
   } else if (req.user &&
-      req.path == "/account") {
+    req.path == "/account") {
     req.session.returnTo = req.path;
   }
   next();
 });
-app.use(express.static(path.join(__dirname, "public"), { maxAge: 31557600000 }));
+app.use(express.static(path.join(__dirname, "public"), {maxAge: 31557600000}));
 
 /**
  * Primary app routes.
@@ -115,7 +171,7 @@ app.post("/reset/:token", userController.postReset);
 app.get("/signup", userController.getSignup);
 app.post("/signup", userController.postSignup);
 app.get("/contact", contactController.getContact);
-app.post("/contact", contactController.postContact);
+// app.post("/contact", contactController.postContact);
 app.get("/account", passportConfig.isAuthenticated, userController.getAccount);
 app.post("/account/profile", passportConfig.isAuthenticated, userController.postUpdateProfile);
 app.post("/account/password", passportConfig.isAuthenticated, userController.postUpdatePassword);
@@ -131,8 +187,8 @@ app.get("/api/facebook", passportConfig.isAuthenticated, passportConfig.isAuthor
 /**
  * OAuth authentication routes. (Sign in)
  */
-app.get("/auth/facebook", passport.authenticate("facebook", { scope: ["email", "public_profile"] }));
-app.get("/auth/facebook/callback", passport.authenticate("facebook", { failureRedirect: "/login" }), (req, res) => {
+app.get("/auth/facebook", passport.authenticate("facebook", {scope: ["email", "public_profile"]}));
+app.get("/auth/facebook/callback", passport.authenticate("facebook", {failureRedirect: "/login"}), (req, res) => {
   res.redirect(req.session.returnTo || "/");
 });
 

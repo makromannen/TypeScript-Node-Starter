@@ -1,0 +1,10 @@
+{{#if messages.errors}}
+  <div class="alert alert-danger fade in">
+    <button class="close" type='button' data-dismiss='alert'>
+      <i class="fa fa-times-circle-o"></i>
+    </button>
+    {{#each messages.errors}}
+      <div>{{msg}}</div>
+    {{/each}}
+  </div>
+{{/if}}
